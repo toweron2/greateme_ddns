@@ -1,12 +1,15 @@
 package main
 
 import (
+	"fmt"
 	"github.com/alibabacloud-go/tea/tea"
 	"github.com/xiaohh-me/greateme_ddns/conf"
 	"github.com/xiaohh-me/greateme_ddns/service"
 	"github.com/xiaohh-me/greateme_ddns/utils/alibaba"
 	"log"
+	"net"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -22,45 +25,60 @@ func main() {
 		configFilePath = tea.String(os.Args[1])
 	} else {
 		// 读取默认配置文件路径
-		configFilePath = tea.String("./conf/config.ini")
+		configFilePath = tea.String("./config.yaml")
 	}
-	// 初始化配置文件
-	dnsConfig, err := conf.GetConfig(configFilePath)
-	if err != nil {
-		log.Fatalf("读取配置文件时候发生错误：%v\n", err)
-	}
+
+	var c conf.Config
+	conf.MustLoad(*configFilePath, &c)
+
 	// 初始化阿里云域名客户端
-	err = alibaba.InitClient(dnsConfig.AccessKeyId, dnsConfig.AccessKeySecret, dnsConfig.DomainEndpoint, dnsConfig.DnsEndpoint)
+	err := alibaba.InitClient(c.Aliyun.AccessKeyId, c.Aliyun.AccessKeySecret, c.Aliyun.DomainEndpoint, c.Aliyun.DnsEndpoint)
 	if err != nil {
 		log.Fatalf("初始化阿里云域名客户端的时候发生了错误：%v\n", err)
 	}
-	log.Println("域名和DNS解析客户端初始化成功")
-	if strings.Compare(*dnsConfig.ExecType, "repetition") == 0 {
-		// 多次执行
-		for {
-			go _main(dnsConfig.DomainList, dnsConfig.DnsType)
-			time.Sleep(*dnsConfig.DurationMinute * time.Minute)
+	fmt.Println("域名和DNS解析客户端初始化成功")
+	fmt.Printf("执行任务：每\t%s\t执行一次的任务\n", c.Time.DurationMinute.String())
+
+	// 创建一个定时器，每10分钟触发一次
+	ticker := time.NewTicker(c.Time.DurationMinute)
+	defer ticker.Stop() // 确保在函数退出时停止定时器
+
+	// 循环执行任务
+	for {
+		select {
+		case <-ticker.C:
+			// 这里放置你要执行的任务代码
+			for _, dns := range c.Dns {
+				// 开始同步
+				err = service.SyncAllDomain(dns.Domain, dns.DnsType, checkAvailability(dns.Ipv4))
+				if err != nil {
+					log.Printf("同步域名信息的时候发生了异常：%v\n", err)
+				}
+			}
+			runtime.GC()
+			// 如果需要在程序中止时清理资源或其他操作，可以监听信号
+			// case <-stopSignal:
+			//   return
 		}
-	} else if strings.Compare(*dnsConfig.ExecType, "single") == 0 {
-		// 单次执行
-		_main(dnsConfig.DomainList, dnsConfig.DnsType)
-	} else {
-		// 执行类型配置错误
-		log.Fatalln("执行类型（time.type）配置错误，值只能为single（单次执行）和repetition（多次执行）")
 	}
 }
 
-func _main(domainNameList *[]string, dnsType *string) {
-	// 捕捉所有异常，兜底的方法
-	defer func() {
-		if err := recover(); err != nil {
-			log.Printf("系统发生了异常：%v\n", err)
+func checkAvailability(targets []string) []string {
+	fmt.Printf("-----------------------%s-------------------------\n", time.Now().Format(time.DateTime))
+	var available []string
+	for _, t := range targets {
+		conn, err := net.DialTimeout("tcp", t, 5*time.Second)
+		if err != nil {
+			fmt.Printf("✘\t%s: %v\n", t, err.Error())
+		} else {
+			fmt.Printf("✔\t%s\n", t)
+			available = append(available, strings.Split(t, ":")[0])
+			conn.Close()
 		}
-	}()
-
-	// 开始同步
-	err := service.SyncAllDomain(domainNameList, dnsType)
-	if err != nil {
-		log.Printf("同步域名信息的时候发生了异常：%v\n", err)
 	}
+	if len(available) == 0 {
+		log.Printf("!!! 没有可用的地址")
+	}
+	fmt.Println("-------------------------------------------------------------------")
+	return available
 }

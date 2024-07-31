@@ -1,6 +1,6 @@
 module github.com/xiaohh-me/greateme_ddns
 
-go 1.21
+go 1.20
 
 require (
 	github.com/alibabacloud-go/alidns-20150109/v4 v4.5.0
@@ -8,7 +8,7 @@ require (
 	github.com/alibabacloud-go/domain-20180129/v4 v4.0.4
 	github.com/alibabacloud-go/tea v1.2.2
 	github.com/alibabacloud-go/tea-utils/v2 v2.0.5
-	github.com/go-ini/ini v1.67.0
+	gopkg.in/yaml.v2 v2.2.8
 )
 
 require (

@@ -13,9 +13,9 @@ type WanIpResponse struct {
 }
 
 // GetWanIpAddress 获取公网IP地址
-func GetWanIpAddress(dnsType *string) (*string, error) {
+func GetWanIpAddress(dnsType string) (*string, error) {
 	var requestURL string
-	requestURL = "https://" + *dnsType + ".jsonip.com"
+	requestURL = "https://" + dnsType + ".jsonip.com"
 	// 访问并获取公网IP地址
 	resp, err := http.Get(requestURL)
 	// 方法执行完后关闭访问的body对象
